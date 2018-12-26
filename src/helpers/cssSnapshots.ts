@@ -9,21 +9,38 @@ const processor = postcss(postcssIcssSelectors({ mode: 'local' }));
 export const getClasses = (css: string) =>
   extractICSS(processor.process(css).root).icssExports;
 const classNameToProperty = (className: string) => `'${className}': string;`;
+const classNameToUnion = (className: string) => `'${className}'`;
 const flattenClassNames = (
   previousValue: string[] = [],
   currentValue: string[],
 ) => previousValue.concat(currentValue);
 
-export const createExports = (classes: IICSSExports, options: IOptions) => `\
-declare const classes: {
-  ${Object.keys(classes)
+const classnamesTypes = (classNames: string[]) => `
+type ClassKeys = ${classNames.map(classNameToUnion).join(' | ')}
+type ClassDictionary = { [id in ClassKeys]?: any };
+type ClassValue = ClassKeys | ClassDictionary;
+
+interface ClassArray extends Array<ClassValue> {}
+interface ClassNames extends ClassDictionary {
+  (...classes: ClassValue[]) => string;
+}
+
+declare const classNamesFn: ClassNames;
+
+export default classNamesFn`;
+
+export const createExports = (classes: IICSSExports, options: IOptions) => {
+  const classNames = Object.keys(classes)
     .map(transformClasses(options.camelCase))
-    .reduce(flattenClassNames)
-    .map(classNameToProperty)
-    .join('\n  ')}
+    .reduce(flattenClassNames);
+
+  return `\
+declare const classes: {
+  ${classNames.map(classNameToProperty).join('\n  ')}
 };
-export default classes;
+${options.classnamesLoader ? classnamesTypes : 'export default classes'};
 `;
+};
 
 export const getDtsSnapshot = (
   ts: typeof ts_module,
